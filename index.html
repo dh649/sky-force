@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Sky-Strike</title>
+<title>Sky Strike</title>
 <style>
   html, body {
     margin: 0;
@@ -178,7 +178,7 @@ let shakeTime = 0;
 
 const player = {
   x: W/2, y: H - 100, w: 40, h: 40,
-  speed: 5, cooldown: 0, fireRate: 8,
+  speed: 5, hSpeed: 3.2, cooldown: 0, fireRate: 8,
   multiShot: 1, power: 1, invuln: 0
 };
 
@@ -288,7 +288,7 @@ function update() {
   dx += touchDir.x; dy += touchDir.y;
   const mag = Math.hypot(dx,dy);
   if (mag > 1) { dx/=mag; dy/=mag; }
-  player.x += dx * player.speed;
+  player.x += dx * player.hSpeed;
   player.y += dy * player.speed;
   player.x = Math.max(24, Math.min(W-24, player.x));
   player.y = Math.max(24, Math.min(H-24, player.y));
