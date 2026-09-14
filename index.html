@@ -71,7 +71,6 @@
   <div id="hud">
     <div id="scoreBox">Score: 0</div>
     <div id="waveBox">Wave 1</div>
-    <div id="livesBox">Lives: 3</div>
     <div id="bombBox">Bombs: 1</div>
     <div id="coinBox">Coins: 0</div>
     <div id="weaponBox">Weapon: Spread</div>
@@ -134,7 +133,6 @@ const overlayText = document.getElementById('overlayText');
 const startBtn = document.getElementById('startBtn');
 const scoreBox = document.getElementById('scoreBox');
 const waveBox = document.getElementById('waveBox');
-const livesBox = document.getElementById('livesBox');
 const bombBox = document.getElementById('bombBox');
 const coinBox = document.getElementById('coinBox');
 const weaponBox = document.getElementById('weaponBox');
@@ -202,6 +200,7 @@ let weapon = 'spread';
 let waveStats = { shots:0, hits:0, damage:0 };
 let waveToast = null;
 let waveTransitioning = false;
+let redFlash = 0;
 
 const player = {
   x: W/2, y: H - 100, w: 40, h: 40,
@@ -336,6 +335,7 @@ function showWaveToast() {
 function update() {
   frame++;
   if (shakeTime > 0) shakeTime--;
+  if (redFlash > 0) redFlash--;
   if (waveToast) { waveToast.life--; if (waveToast.life <= 0) waveToast = null; }
 
   for (const s of starsFar) { s.y += s.s; if (s.y > H) { s.y = 0; s.x = Math.random()*W; } }
@@ -517,14 +517,13 @@ function applyPowerUp(kind) {
 
 function hitPlayer() {
   if (player.shield) { player.shield = false; player.invuln = 60; shakeTime = 10; spawnParticles(player.x, player.y, '#5ff0ff', 24); return; }
-  lives--; waveStats.damage++; player.invuln = 90; shakeTime = 16;
+  lives--; waveStats.damage++; player.invuln = 90; shakeTime = 16; redFlash = 18;
   spawnParticles(player.x, player.y, '#ff4f4f', 20);
 }
 
 function updateHUD() {
   scoreBox.textContent = 'Score: ' + score;
   waveBox.textContent = boss ? ('Wave ' + wave + (boss.isFinal ? ' \u2014 FINAL BOSS' : ' \u2014 BOSS')) : ('Wave ' + wave + ' / ' + FINAL_WAVE);
-  livesBox.textContent = 'Lives: ' + Math.max(0, lives);
   bombBox.textContent = 'Bombs: ' + player.bombs;
   coinBox.textContent = 'Coins: ' + runCoins;
   weaponBox.textContent = 'Weapon: ' + (weapon === 'laser' ? 'Laser' : weapon === 'homing' ? 'Homing' : 'Spread');
@@ -588,6 +587,13 @@ function draw() {
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.35)');
   ctx.fillStyle = vg; ctx.fillRect(0,0,W,H);
 
+  if (redFlash > 0) {
+    ctx.fillStyle = 'rgba(255,20,20,' + (redFlash/18*0.32) + ')';
+    ctx.fillRect(0,0,W,H);
+  }
+
+  drawLivesHearts();
+
   if (waveToast) {
     ctx.save();
     ctx.globalAlpha = Math.min(1, waveToast.life/40);
@@ -597,6 +603,44 @@ function draw() {
     ctx.restore();
   }
 
+  ctx.restore();
+}
+
+function drawHeart(x, y, size, color, glow) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(size/14, size/14);
+  if (glow) { ctx.shadowColor = color; ctx.shadowBlur = 8; }
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, 4);
+  ctx.bezierCurveTo(-7,-6,-14,2,0,12);
+  ctx.bezierCurveTo(14,2,7,-6,0,4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawLivesHearts() {
+  const size = 15, gap = 6;
+  const visibleLives = Math.max(0, lives);
+  ctx.save();
+  for (let i = 0; i < visibleLives; i++) {
+    const hx = 16 + i * (size + gap);
+    const hy = 32;
+    const isLast = i === visibleLives - 1;
+    const pulsing = isLast && visibleLives <= 1 && frame % 24 < 12;
+    const color = pulsing ? '#ff9a9a' : '#ff4f6b';
+    drawHeart(hx, hy, size, color, true);
+  }
+  if (player.shield) {
+    ctx.strokeStyle = 'rgba(95,240,255,0.85)';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = 'rgba(95,240,255,0.9)';
+    ctx.shadowBlur = 6;
+    ctx.strokeRect(8, 20, Math.max(1,visibleLives) * (size + gap) + 4, size + 16);
+    ctx.shadowBlur = 0;
+  }
   ctx.restore();
 }
 
@@ -675,71 +719,126 @@ function drawPlayer() {
 function drawEnemy(e) {
   ctx.save();
   ctx.translate(e.x, e.y);
-  ctx.rotate(Math.PI); // enemies face downward toward the player
 
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  ctx.beginPath(); ctx.ellipse(1, -18, 12, 4, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(1, 22, 13, 4, 0, 0, Math.PI*2); ctx.fill();
+
+  const blink = Math.floor(frame/18 + e.t) % 2 === 0;
+  const flick = 0.7 + Math.sin(frame*0.5 + e.t) * 0.3;
 
   if (e.type === 'basic') {
+    const bob = Math.sin((frame+e.t)*0.08) * 1.4;
+    ctx.translate(0, bob);
+
+    // engine trail
+    const flameGrad = ctx.createLinearGradient(0,-14,0,-14-10*flick);
+    flameGrad.addColorStop(0, '#ffb85c'); flameGrad.addColorStop(1, 'rgba(255,120,20,0)');
+    ctx.fillStyle = flameGrad;
+    ctx.beginPath(); ctx.ellipse(0, -18, 4, 8*flick, 0, 0, Math.PI*2); ctx.fill();
+
     const g = ctx.createLinearGradient(-15,-14,15,18);
-    g.addColorStop(0, '#c9451a'); g.addColorStop(0.5, '#ff8f5c'); g.addColorStop(1, '#c9451a');
+    g.addColorStop(0, '#a8330f'); g.addColorStop(0.45, '#ff9a63'); g.addColorStop(1, '#a8330f');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.moveTo(0, 18); ctx.lineTo(15, -14); ctx.lineTo(0, -6); ctx.lineTo(-15, -14); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(60,15,0,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, 18); ctx.lineTo(15, -14); ctx.lineTo(0, -6); ctx.lineTo(-15, -14); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,210,170,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(50,10,0,0.5)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0,18); ctx.lineTo(0,-6); ctx.stroke();
-    ctx.fillStyle = '#ffd9a0'; ctx.shadowColor = '#ffb85c'; ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.arc(0,-2,2.4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = blink ? '#ffe9c2' : '#ffb85c'; ctx.shadowColor = '#ffb85c'; ctx.shadowBlur = 7;
+    ctx.beginPath(); ctx.arc(0,-2,2.6,0,Math.PI*2); ctx.fill();
     ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath(); ctx.arc(-6,-9,1.4,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(6,-9,1.4,0,Math.PI*2); ctx.fill();
 
   } else if (e.type === 'zigzag') {
+    const bank = Math.cos(e.t*0.07) * 0.3;
+    ctx.rotate(bank);
+
+    const flameGrad = ctx.createLinearGradient(0,-15,0,-15-9*flick);
+    flameGrad.addColorStop(0, '#e59aff'); flameGrad.addColorStop(1, 'rgba(200,80,255,0)');
+    ctx.fillStyle = flameGrad;
+    ctx.beginPath(); ctx.ellipse(0,-17,3.5,7*flick,0,0,Math.PI*2); ctx.fill();
+
     const g = ctx.createLinearGradient(-14,0,14,0);
-    g.addColorStop(0, '#7c2fc9'); g.addColorStop(0.5, '#dfa6ff'); g.addColorStop(1, '#7c2fc9');
+    g.addColorStop(0, '#5c1f96'); g.addColorStop(0.5, '#e6c2ff'); g.addColorStop(1, '#5c1f96');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.moveTo(0,-17); ctx.lineTo(14,0); ctx.lineTo(0,17); ctx.lineTo(-14,0); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.beginPath(); ctx.moveTo(0,-17); ctx.lineTo(5,-4); ctx.lineTo(0,-1); ctx.lineTo(-5,-4); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#ff6bf0'; ctx.shadowColor = '#ff6bf0'; ctx.shadowBlur = 8;
-    ctx.beginPath(); ctx.arc(0,3,2.6,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0,-17); ctx.lineTo(14,0); ctx.lineTo(0,17); ctx.lineTo(-14,0); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,230,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath(); ctx.moveTo(0,17); ctx.lineTo(5,4); ctx.lineTo(0,1); ctx.lineTo(-5,4); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = blink ? '#ffb0ff' : '#c93ff0'; ctx.shadowColor = '#ff6bf0'; ctx.shadowBlur = 9;
+    ctx.beginPath(); ctx.arc(0,-2,2.8,0,Math.PI*2); ctx.fill();
     ctx.shadowBlur = 0;
 
   } else if (e.type === 'shooter') {
+    const flameGrad = ctx.createLinearGradient(0,-16,0,-16-9*flick);
+    flameGrad.addColorStop(0, '#ffb0d8'); flameGrad.addColorStop(1, 'rgba(255,90,160,0)');
+    ctx.fillStyle = flameGrad;
+    ctx.beginPath(); ctx.ellipse(0,-18,4,7*flick,0,0,Math.PI*2); ctx.fill();
+
     const g = ctx.createLinearGradient(-17,-16,17,16);
-    g.addColorStop(0, '#c22a6e'); g.addColorStop(0.5, '#ff8fc0'); g.addColorStop(1, '#c22a6e');
+    g.addColorStop(0, '#8c1f52'); g.addColorStop(0.45, '#ff9ac4'); g.addColorStop(1, '#8c1f52');
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(0,16); ctx.lineTo(17,-10); ctx.lineTo(6,-6); ctx.lineTo(0,-16); ctx.lineTo(-6,-6); ctx.lineTo(-17,-10);
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#7a1440';
-    ctx.fillRect(-2.5, -22, 5, 8);
-    ctx.fillStyle = '#ffe3ef'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.arc(0,-2,2.2,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,220,235,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+
+    // twin cannon barrels pointing toward the player
+    ctx.fillStyle = '#5c1030';
+    ctx.fillRect(-6, 12, 3, 10); ctx.fillRect(3, 12, 3, 10);
+    ctx.fillStyle = blink ? '#ffe3ef' : '#ff8fc0'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.arc(0,-2,2.4,0,Math.PI*2); ctx.fill();
     ctx.shadowBlur = 0;
 
   } else if (e.type === 'diver') {
-    ctx.fillStyle = 'rgba(255,63,208,0.18)';
-    ctx.beginPath(); ctx.moveTo(-5,10); ctx.lineTo(5,10); ctx.lineTo(0,26); ctx.closePath(); ctx.fill();
-    const g = ctx.createLinearGradient(0,-16,0,12);
-    g.addColorStop(0, '#ff8ae8'); g.addColorStop(1, '#a51f9c');
-    ctx.shadowColor = '#ff3fd0'; ctx.shadowBlur = 12;
+    const bank = Math.max(-0.5, Math.min(0.5, e.vx * 0.15));
+    ctx.rotate(bank);
+
+    ctx.fillStyle = 'rgba(255,63,208,0.15)';
+    ctx.beginPath(); ctx.moveTo(-5,-10); ctx.lineTo(5,-10); ctx.lineTo(0,-28); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,63,208,0.25)';
+    ctx.beginPath(); ctx.moveTo(-3,-10); ctx.lineTo(3,-10); ctx.lineTo(0,-20); ctx.closePath(); ctx.fill();
+
+    const g = ctx.createLinearGradient(0,-12,0,16);
+    g.addColorStop(0, '#ffa6ef'); g.addColorStop(1, '#8c1585');
+    ctx.shadowColor = '#ff3fd0'; ctx.shadowBlur = 13;
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(9,12); ctx.lineTo(0,6); ctx.lineTo(-9,12); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0,16); ctx.lineTo(9,-12); ctx.lineTo(0,-6); ctx.lineTo(-9,-12); ctx.closePath(); ctx.fill();
     ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,235,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
 
   } else if (e.type === 'tank') {
+    const pulse = 0.6 + Math.sin(frame*0.1)*0.4;
     const g = ctx.createLinearGradient(-20,-20,20,20);
-    g.addColorStop(0, '#4a1f1f'); g.addColorStop(0.5, '#8c3a3a'); g.addColorStop(1, '#4a1f1f');
+    g.addColorStop(0, '#341313'); g.addColorStop(0.5, '#9c4b4b'); g.addColorStop(1, '#341313');
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(-20,-8); ctx.lineTo(-10,-20); ctx.lineTo(10,-20); ctx.lineTo(20,-8);
     ctx.lineTo(20,10); ctx.lineTo(10,20); ctx.lineTo(-10,20); ctx.lineTo(-20,10);
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.strokeStyle = 'rgba(255,180,150,0.35)'; ctx.lineWidth = 1.4; ctx.stroke();
+
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(-16,-16,6,6); ctx.fillRect(10,-16,6,6); ctx.fillRect(-16,10,6,6); ctx.fillRect(10,10,6,6);
+
+    // side turrets
+    ctx.fillStyle = '#5a2424';
+    ctx.fillRect(-27,-5,8,10); ctx.fillRect(19,-5,8,10);
+    ctx.fillStyle = '#ff8f4f'; ctx.shadowColor = '#ff8f4f'; ctx.shadowBlur = 5*pulse;
+    ctx.fillRect(-27,-2,3,4); ctx.fillRect(24,-2,3,4);
+    ctx.shadowBlur = 0;
+
     ctx.fillStyle = '#c96a6a'; ctx.fillRect(-14,-4,28,8);
     ctx.fillStyle = '#3a1414'; ctx.beginPath(); ctx.arc(-15,0,3,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(15,0,3,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#ffcf4f'; ctx.shadowColor = '#ffcf4f'; ctx.shadowBlur = 10;
-    ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = '#ffcf4f'; ctx.shadowColor = '#ffcf4f'; ctx.shadowBlur = 8 + 6*pulse;
+    ctx.beginPath(); ctx.arc(0,0,5*pulse+3,0,Math.PI*2); ctx.fill();
     ctx.shadowBlur = 0;
   }
   ctx.restore();
