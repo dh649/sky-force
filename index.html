@@ -476,7 +476,7 @@ function updateBoss() {
     boss.cooldown--;
     if (boss.cooldown <= 0) {
       const n = 5;
-      for (let i=0;i<n;i++) { const ang = -Math.PI/2 + (i-(n-1)/2)*0.28; enemyBullets.push({x:boss.x, y:boss.y+40, vx:Math.cos(ang)*4.5, vy:Math.sin(ang)*4.5, r:5}); }
+      for (let i=0;i<n;i++) { const ang = Math.PI/2 + (i-(n-1)/2)*0.28; enemyBullets.push({x:boss.x, y:boss.y+40, vx:Math.cos(ang)*4.5, vy:Math.sin(ang)*4.5, r:5}); }
       boss.cooldown = 55;
     }
     return;
@@ -491,7 +491,7 @@ function updateBoss() {
   boss.cooldown--;
   if (boss.cooldown <= 0) {
     const n = 5 + boss.phase;
-    for (let i=0;i<n;i++) { const ang = -Math.PI/2 + (i-(n-1)/2)*0.24; enemyBullets.push({x:boss.x, y:boss.y+50, vx:Math.cos(ang)*5, vy:Math.sin(ang)*5, r:5}); }
+    for (let i=0;i<n;i++) { const ang = Math.PI/2 + (i-(n-1)/2)*0.24; enemyBullets.push({x:boss.x, y:boss.y+50, vx:Math.cos(ang)*5, vy:Math.sin(ang)*5, r:5}); }
     boss.cooldown = spreadInterval;
   }
   if (boss.phase >= 2) {
